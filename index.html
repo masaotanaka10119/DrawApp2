@@ -500,6 +500,11 @@
         <button id="copyDatabaseBtn">データコピー</button>
         <button id="pasteDatabaseBtn">データ貼り付け</button>
         <button id="saveDatabaseBtn">データ保存</button>
+
+        <button type="button" id="saveJsonBtn">JSON保存</button>
+        <input type="file" id="loadJsonInput" accept=".json">
+
+
         </div>
 
     </div> 
@@ -537,6 +542,13 @@
         const copyDatabaseBtn = document.getElementById('copyDatabaseBtn');
         const pasteDatabaseBtn = document.getElementById('pasteDatabaseBtn');
         const saveDatabaseBtn = document.getElementById('saveDatabaseBtn');
+        // --- ボタンと隠し入力欄の要素を取得 -----------------------------------------
+        const saveJsonBtn = document.getElementById('saveJsonBtn');
+        const loadJsonBtn = document.getElementById('loadJsonBtn'); // 見た目上のボタン
+        const jsonFileInput = document.getElementById('jsonFileInput'); // 実際のファイル選択欄
+        
+
+
 
         // ★テンプレートを取得
         const datatableRowTemplate = document.getElementById('datatable-row-template');
@@ -1540,7 +1552,6 @@
                 alert('保存データの形式が不正なため、ロードできませんでした。');
             }
         }
-        
 
         
         //-------------------------------------------------------------------------------------------
@@ -2971,8 +2982,93 @@
             // 保存が完了したことをユーザーにフィードバックする（任意）
             alert('データベースが保存されました。');
         });
+
+
+        // 【JSON保存ボタンの処理】-------------------------------------------------------
+        saveJsonBtn.addEventListener('click', () => {
+            
+            // 1. データベーステーブルの要素を取得
+            const databaseTable = document.getElementById('databaseTable');
+
+            // 2. テーブルから全てのデータを行ごとに取得
+            // (以前のコードにある「getAllTableData」という共通関数を使います)
+            const data = getAllTableData(databaseTable);
+
+            // 3. 取得したデータをJSONという形式の「文字列」に変換する
+            const jsonString = JSON.stringify(data, null, 2);
+            
+            // 4. その文字列を、ダウンロード可能な「ファイル（Blob）」として準備する
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            
+            // 5. ダウンロード用の「身代わりリンク」を一時的に作る
+            const link = document.createElement('a');
+            
+            // 6. 準備したファイル（Blob）にアクセスするためのURLを発行してリンクに貼る
+            link.href = URL.createObjectURL(blob);
+            
+            // 7. 保存される時のファイル名を決める
+            link.download = 'database_backup.json';
+            
+            // 8. そのリンクを勝手にクリックさせて、ダウンロードを開始させる
+            link.click();
+            
+            // 9. 用が済んだURLはメモリから消して片付ける
+            URL.revokeObjectURL(link.href);
+        });
         
+        // 【JSON読み込み（ファイル選択）の処理】-------------------------------------------
+        // ユーザーがファイルを選んだ瞬間に動くイベント「change」を使います
+        loadJsonInput.addEventListener('change', (event) => {
+            
+            // 1. ユーザーが選んだファイル（1番目）を取り出す
+            const file = event.target.files[0];
+            
+            // 2. もしファイルが選ばれていなければ、何もしないで終わる
+            if (!file) return;
+            
+            // 3. ファイルの中身を読み取るための道具「FileReader」を準備する
+            const reader = new FileReader();
+            
+            // 4. 「読み取りが終わった後」に何をするか、あらかじめ決めておく（予約）
+            // --- 読み込み処理の中の修正 -------------------------------------------
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    if (confirm('データを読み込みますか？現在の内容はすべて削除されます。')) {
+                        // 1. 【重要】テーブルそのものではなく、データが入っている「tbody」を直接指定する
+                        // もし databaseTableBody という変数が既に上の方で宣言されているならそれを使います
+                        const targetTbody = document.querySelector('#databaseTable tbody');
+                        
+                        // 2. tbodyの中身を空にする（これで今ある行がすべて消えます）
+                        if (targetTbody) {
+                            targetTbody.innerHTML = ''; 
+                        }
+                        
+                        // 3. 読み込んだデータが「0件」より多い場合のみ、行を追加していく
+                        if (data.length > 0) {
+                            data.forEach(rowData => {
+                                const newRow = createRowFromTemplate();
+                                setDataToRow(newRow, rowData); // データを流し込む
+                                targetTbody.appendChild(newRow); // 空にしたtbodyに追加
+                                });
+                            } else {
+                                // もしデータが0件なら、空の行を1つだけ出す（お好みで）
+                                targetTbody.appendChild(createRowFromTemplate());
+                            }
+                            
+                            alert('読み込みが完了しました。');
+                        }
+                    } catch (err) {
+                        alert('エラーが発生しました。');
+                    }
+                };
+                
+                // 5. 準備が整ったので、実際にファイルの読み取りをスタートさせる
+                reader.readAsText(file);
+            });
         
+
         // 印刷ボタンへのイベントリスナー設定-------------------------------------------------------------
         printBtn.addEventListener('click', () => {
             printCanvasAndTables();
