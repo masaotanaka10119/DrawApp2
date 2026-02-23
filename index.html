@@ -1316,7 +1316,11 @@
             // 文字列の先頭や末尾にないタブ文字は trim() では削除されない
             //split('\t') は、文字列を分割した結果として自動的に配列を返すメソッド
             //ここで行ごとに区切られた('\n')を含まない配列にする
-            const rows = clipboardText.trim().split('\n').filter(r => r.trim() !== '');
+            //const rows = clipboardText.trim().split('\n').filter(r => r.trim() !== '');
+
+            // 先頭の余計な削除をせず、単純に改行で分割します
+            // split(/\r?\n/) は Windows の Excel からのコピーに最も強い書き方です
+            const rows = clipboardText.split(/\r?\n/).filter(r => r.length > 0);
 
             //クリップボードの行データの配列を繰り返し処理
             rows.forEach(rowData => {
@@ -1405,6 +1409,7 @@
                             input.value = cellValue;
                         }
                     }
+
                     // この処理が終わったら、次のクリップボードの列へ移動
                     columnIndex++;
                 });
@@ -3017,56 +3022,84 @@
         });
         
         // 【JSON読み込み（ファイル選択）の処理】-------------------------------------------
-        // ユーザーがファイルを選んだ瞬間に動くイベント「change」を使います
+        // ユーザーがファイルを選択（change）した時に実行する命令を登録
         loadJsonInput.addEventListener('change', (event) => {
-            
-            // 1. ユーザーが選んだファイル（1番目）を取り出す
+            // 選択されたファイルリストの中から、先頭の1つ（index 0）を取り出して変数 file に入れる
             const file = event.target.files[0];
-            
-            // 2. もしファイルが選ばれていなければ、何もしないで終わる
+            // もしファイルが選択されていなければ（キャンセルされた場合など）、ここで処理を中断する
             if (!file) return;
-            
-            // 3. ファイルの中身を読み取るための道具「FileReader」を準備する
+            // テキストファイルを読み込むための専用ツール「FileReader」を新しく用意する
             const reader = new FileReader();
             
-            // 4. 「読み取りが終わった後」に何をするか、あらかじめ決めておく（予約）
-            // --- 読み込み処理の中の修正 -------------------------------------------
+            // ツールがファイルの読み込みを「完了した時」に実行する処理を定義（予約）
             reader.onload = (e) => {
                 try {
+                    // 読み取った文字列（e.target.result）を、JavaScriptで扱える「オブジェクト形式」に変換して data に入れる
                     const data = JSON.parse(e.target.result);
                     
+                    // 確認ダイアログを表示し、ユーザーが「OK」を押した場合のみ中身の処理へ進む
                     if (confirm('データを読み込みますか？現在の内容はすべて削除されます。')) {
-                        // 1. 【重要】テーブルそのものではなく、データが入っている「tbody」を直接指定する
-                        // もし databaseTableBody という変数が既に上の方で宣言されているならそれを使います
-                        const targetTbody = document.querySelector('#databaseTable tbody');
+                        // データベースを表示するテーブルの本体（tbody）が存在するか確認し、なければ中断
+                        if (!databaseTableBody) return;
+                        // 現在テーブルに表示されている行をすべて消去して空にする
+                        databaseTableBody.innerHTML = ''; 
                         
-                        // 2. tbodyの中身を空にする（これで今ある行がすべて消えます）
-                        if (targetTbody) {
-                            targetTbody.innerHTML = ''; 
-                        }
-                        
-                        // 3. 読み込んだデータが「0件」より多い場合のみ、行を追加していく
-                        if (data.length > 0) {
+                        // 読み込んだデータが「配列形式」であり、かつ1件以上データが入っているかチェック
+                        if (Array.isArray(data) && data.length > 0) {
+                            // データの件数分だけ、1行ずつ繰り返し処理を行う（rowDataは1行分のデータ）
                             data.forEach(rowData => {
-                                const newRow = createRowFromTemplate();
-                                setDataToRow(newRow, rowData); // データを流し込む
-                                targetTbody.appendChild(newRow); // 空にしたtbodyに追加
+                                // HTML内に定義してあるテンプレート（datatable-row-template）を取得する
+                                const template = document.getElementById('datatable-row-template');
+                                // テンプレートが見つからない場合はエラーログを出して、この行の処理をスキップ
+                                if (!template) {
+                                    console.error('テンプレートが見つかりません: datatable-row-template');
+                                    return;
+                                }
+                                
+                                // テンプレートの中身をコピー（クローン）し、その中の「tr（行）」要素を newRow に入れる
+                                const newRow = template.content.cloneNode(true).querySelector('tr');
+                                
+                                // コピーした新しい行の中から、すべての「input」タグと「select」タグを探してリスト化する
+                                const inputs = newRow.querySelectorAll('input, select');
+                                
+                                // 1つの行の中にある各入力項目（input/select）に対して、1つずつデータを流し込む
+                                inputs.forEach(input => {
+                                    // 入力項目の「data-coord属性（x1, y1など）」の値を取得して coordKey に入れる
+                                    const coordKey = input.getAttribute('data-coord');
+                                    // 入力項目の「クラス名」を取得し、スペース区切りがある場合は最初の1つを classKey に入れる
+                                    const classKey = input.className.split(' ')[0];
+                                    
+                                    // もし data-coord が設定されており、かつ読み込んだデータの中にその名前のキーがあれば
+                                    if (coordKey && rowData.hasOwnProperty(coordKey)) {
+                                        // JSONからそのキーに対応する値を取り出し、入力欄にセット（値がnullなら空文字にする）
+                                        input.value = (rowData[coordKey] === null) ? '' : rowData[coordKey];
+                                    } 
+                                    // data-coordがなくても、クラス名が読み込んだデータ内のキーと一致していれば
+                                    else if (classKey && rowData.hasOwnProperty(classKey)) {
+                                        // その値を入力欄にセット（値がnullなら空文字にする）
+                                        input.value = (rowData[classKey] === null) ? '' : rowData[classKey];
+                                    }
                                 });
-                            } else {
-                                // もしデータが0件なら、空の行を1つだけ出す（お好みで）
-                                targetTbody.appendChild(createRowFromTemplate());
-                            }
-                            
-                            alert('読み込みが完了しました。');
+                                
+                                // データの流し込みが終わった新しい行を、実際の画面上のテーブル（tbody）の最後に追加する
+                                databaseTableBody.appendChild(newRow);
+                            });
                         }
-                    } catch (err) {
-                        alert('エラーが発生しました。');
+                        // すべての行の追加が終わったら、完了メッセージを表示する
+                        alert('読み込みが完了しました。');
+                        // ファイル選択欄の中身をリセット（これを行うことで、同じファイルを連続で読み込めるようになる）
+                        loadJsonInput.value = ''; 
                     }
-                };
-                
-                // 5. 準備が整ったので、実際にファイルの読み取りをスタートさせる
-                reader.readAsText(file);
-            });
+                } catch (err) {
+                    // 万が一、JSONの形式が正しくないなどのエラーが起きたらコンソールに内容を表示する
+                    console.error(err);
+                    // ユーザーに失敗したことを通知する
+                    alert('エラーが発生しました。コンソールを確認してください。');
+                }
+            };
+            // 実際にファイルを「テキストとして読み込む」処理を開始する
+            reader.readAsText(file);
+        });
         
 
         // 印刷ボタンへのイベントリスナー設定-------------------------------------------------------------
