@@ -340,6 +340,7 @@
         <div>
             <button id="addRowBtn">データベースへ追加</button>
             <button id="clearInputDataRowBtn">入力データのクリア</button>
+            <button id="selectRowEditBtn">抽出データ選択行編集</button>
         </div>
 
         <p> 抽出データ</p>
@@ -494,17 +495,17 @@
         <tbody>
         </tbody>    
         </table>
+        </div>
+
+        <div>
         <button id="deleteDatabaseRowBtn">選択行削除</button>
         <button id="sortDatabaseBtn">昇順に並び替え</button>
         <button id="duplicateDeleteButton">重複データ削除</button>
         <button id="copyDatabaseBtn">データコピー</button>
         <button id="pasteDatabaseBtn">データ貼り付け</button>
         <button id="saveDatabaseBtn">データ保存</button>
-
         <button type="button" id="saveJsonBtn">JSON保存</button>
         <input type="file" id="loadJsonInput" accept=".json">
-
-
         </div>
 
     </div> 
@@ -519,6 +520,7 @@
         const inputdataTableBody = document.querySelector('#inputdataTable tbody');
         const addRowBtn = document.getElementById('addRowBtn');
         const clearInputDataRowBtn = document.getElementById('clearInputDataRowBtn');
+        const selectRowEditBtn = document.getElementById('selectRowEditBtn');
         const extracteddataTableBody = document.querySelector('#extracteddataTable tbody');
         const extractionBtn = document.getElementById('extractionBtn');
         const extractedDataRegisterButton = document.getElementById('extractedDataRegisterButton');
@@ -626,7 +628,7 @@
         }
 
 
-        // ★指定した行の入力値を別の行にコピーする関数（重複処理の関数化）-----------------------------------
+        // ★指定した行の入力値を別の行にコピーする関数（重複処理の関数化）⇐重複処理の関数化っていうコメントはおそらく間違い-----
         //createRowFromTemplate内で使用された cloneNode(true) がコピーしない、
         // ユーザーが入力した情報（.value）を補完してコピーする
         // 役割：フォーム要素（<input>, <select>）の .value を、複製元の行から複製先の行へ手動でコピーする
@@ -2886,6 +2888,43 @@
                     documentNameInput.value = currentFileName;
                 }
             }
+
+        });
+
+        //抽出データ選択行編集ボタンのクリックイベントリスナー----------------------------------------------------
+        //selectRowEditBtnがclickされたら処理
+        selectRowEditBtn.addEventListener('click', () => {
+
+            // 抽出テーブルで選択されている全ての行を取得
+            const selectedRows = document.querySelectorAll('#extracteddataTable .selected');
+            
+            
+            // 【修正箇所】NodeListは空でもtrueなので、lengthでチェックする
+            if (selectedRows.length === 0) return;
+
+            //現在のinputdataTableの最初の行（tbody内の<tr>）を取得
+            const inputRow = document.querySelector('#inputdataTable tbody tr');
+
+            //編集業の取得。初めに選択されている行を取得
+            const editRow = selectedRows[0]; 
+
+            //データを追加後、入力行をクリアする
+            clearRow(inputRow);   
+            
+            //自作関数使って、選択行の値を入力行にコピーする。
+            // 第一引数(コピー元の行)、第二引数(コピー先の行)としている
+            copyRowValues(editRow, inputRow);
+
+            //抽出テーブルの選択された編集業を削除する
+            editRow.remove();
+            
+            // 残っている選択状態のクラスを確実にクリア
+            document.querySelectorAll('.selected').forEach(row => {
+                row.classList.remove('selected');
+            });
+
+            //Canvas上の確定線を最新状態に更新する
+            redrawAllConfirmedLines();
 
         });
 
